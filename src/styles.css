@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-white text-slate-950;
+}
+
+.dashboard-content > * > section.space-y-6 {
+  transform: scale(0.93);
+  transform-origin: top center;
+}
