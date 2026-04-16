@@ -43,7 +43,7 @@ interface StudentBillingSummary {
                 type="text"
                 [(ngModel)]="billingLookupId"
                 class="w-full rounded-2xl border border-blue-100 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                placeholder="BILL-0009-85"
+                placeholder="BILL-0009-85 or student name"
               />
             </div>
             <button
@@ -194,7 +194,7 @@ interface StudentBillingSummary {
           <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p class="text-sm font-semibold uppercase tracking-[0.25em] text-blue-700">Students</p>
-              <h2 class="mt-2 text-2xl font-black text-slate-950">All students and bill counts</h2>
+              <h2 class="mt-2 text-2xl font-black text-slate-950">All students and their bill and payments</h2>
             </div>
             <div class="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-600">
               Total students:
@@ -558,6 +558,7 @@ export class StudentBillsPageComponent implements OnInit {
   studentSearch = '';
   billSearch = '';
   billingLookupId = '';
+  billingSearchQuery = '';
 
   constructor(
     private paymentService: PaymentService,
@@ -602,12 +603,17 @@ export class StudentBillsPageComponent implements OnInit {
 
   get displayedBillings(): BillingRecord[] {
     const lookup = this.billingLookup();
+    const query = this.billingSearchQuery.trim().toLowerCase();
 
     if (lookup) {
       return [lookup];
     }
 
-    return this.createdBillings();
+    if (!query) {
+      return this.createdBillings();
+    }
+
+    return this.filterCreatedBillings(query);
   }
 
   loadStudents() {
@@ -659,6 +665,7 @@ export class StudentBillsPageComponent implements OnInit {
 
   refreshBillings() {
     this.billingLookupId = '';
+    this.billingSearchQuery = '';
     this.billingLookup.set(null);
     this.closePaymentForm();
     this.loadBillings();
@@ -721,7 +728,7 @@ export class StudentBillsPageComponent implements OnInit {
         const baseMessage = response.message || 'Payment recorded successfully.';
         this.billingsMessage.set(baseMessage);
 
-        this.storeLatestPaymentContext(response.payment);
+        this.storeLatestPaymentContext(response.payment, response.bill);
         this.generateReceiptAfterPayment(billingId, baseMessage);
 
         this.loadBillings();
@@ -755,19 +762,31 @@ export class StudentBillsPageComponent implements OnInit {
   }
 
   lookupBilling() {
-    const billingId = this.billingLookupId.trim();
+    const lookupValue = this.billingLookupId.trim();
 
     this.billingLookupError.set(null);
     this.billingLookup.set(null);
+    this.billingSearchQuery = '';
+    this.billingsMessage.set(null);
 
-    if (!billingId) {
-      this.billingLookupError.set('Please enter a billing ID to search.');
+    if (!lookupValue) {
+      this.billingLookupError.set('Please enter a billing ID or student name to search.');
+      return;
+    }
+
+    const localMatches = this.filterCreatedBillings(lookupValue);
+
+    if (localMatches.length) {
+      this.billingSearchQuery = lookupValue;
+      this.billingsMessage.set(
+        `${localMatches.length} billing record${localMatches.length === 1 ? '' : 's'} found.`
+      );
       return;
     }
 
     this.isLookingUpBilling.set(true);
 
-    this.paymentService.getBillingById(billingId).subscribe({
+    this.paymentService.getBillingById(lookupValue).subscribe({
       next: (response) => {
         this.billingLookup.set(response.billing);
         this.isLookingUpBilling.set(false);
@@ -917,27 +936,71 @@ export class StudentBillsPageComponent implements OnInit {
     return [...billings].sort((first, second) => (second.bill_id || 0) - (first.bill_id || 0));
   }
 
-  private storeLatestPaymentContext(payment?: PaymentRecord) {
-    if (typeof localStorage === 'undefined' || !payment?.billing_id || !payment.student_id || !payment.student_name) {
+  private filterCreatedBillings(query: string): BillingRecord[] {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return this.createdBillings();
+    }
+
+    return this.createdBillings().filter((billing) =>
+      (billing.billing_id || '').toLowerCase().includes(normalizedQuery) ||
+      (billing.student_name || '').toLowerCase().includes(normalizedQuery) ||
+      (billing.student_id || '').toLowerCase().includes(normalizedQuery) ||
+      (billing.fee_name || '').toLowerCase().includes(normalizedQuery)
+    );
+  }
+
+  private storeLatestPaymentContext(payment?: PaymentRecord, bill?: BillingRecord) {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    const billingId = String(payment?.billing_id ?? bill?.billing_id ?? '').trim();
+    const studentId = String(payment?.student_id ?? bill?.student_id ?? '').trim();
+    const studentName = String(payment?.student_name ?? bill?.student_name ?? '').trim();
+
+    if (!billingId || !studentId || !studentName) {
       return;
     }
 
     try {
       localStorage.setItem('cashierweb.latest-payment-context', JSON.stringify({
-        billing_id: payment.billing_id,
-        student_id: payment.student_id,
-        student_name: payment.student_name,
-        fee_name: payment.fee_name,
-        total_fee: payment.total_fee,
-        total_amount: payment.total_amount,
-        payment_method: payment.payment_method,
-        status: payment.status ?? null,
-        balance: payment.balance ?? null,
-        created_at: payment.created_at ?? null
+        billing_id: billingId,
+        student_id: studentId,
+        student_name: studentName,
+        fee_name: String(payment?.fee_name ?? bill?.fee_name ?? ''),
+        total_fee: this.toNumberOrNull(payment?.total_fee, bill?.total_fee),
+        total_amount: this.toNumberOrNull(payment?.total_amount, bill?.total_amount),
+        payment_method: String(payment?.payment_method ?? bill?.payment_method ?? 'Cash'),
+        status: String(payment?.status ?? bill?.status ?? ''),
+        balance: this.toNumberOrNull(payment?.balance, bill?.balance),
+        created_at: String(payment?.created_at ?? bill?.updated_at ?? bill?.created_at ?? '')
       }));
     } catch {
       // Keep payment submission flowing even when local storage is unavailable.
     }
+  }
+
+  private toNumberOrNull(primary: unknown, fallback: unknown): number | null {
+    if (primary === null || primary === undefined) {
+      const fallbackNumber = Number(fallback);
+      return Number.isFinite(fallbackNumber) ? fallbackNumber : null;
+    }
+
+    if (typeof primary === 'string' && !primary.trim()) {
+      const fallbackNumber = Number(fallback);
+      return Number.isFinite(fallbackNumber) ? fallbackNumber : null;
+    }
+
+    const primaryNumber = Number(primary);
+
+    if (Number.isFinite(primaryNumber)) {
+      return primaryNumber;
+    }
+
+    const fallbackNumber = Number(fallback);
+    return Number.isFinite(fallbackNumber) ? fallbackNumber : null;
   }
 
   private generateReceiptAfterPayment(billingId: string, baseMessage: string) {

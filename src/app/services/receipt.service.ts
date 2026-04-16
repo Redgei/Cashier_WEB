@@ -59,7 +59,7 @@ export interface ReceiptLookupResponse {
   providedIn: 'root'
 })
 export class ReceiptService {
-  private apiUrl = 'http://127.0.0.1:8000/api';
+  private apiUrl = 'https://cashierapi-production-22b7.up.railway.app/api';
   private readonly localReceiptsStorageKey = 'cashierweb.local-receipts';
 
   constructor(private http: HttpClient) {}

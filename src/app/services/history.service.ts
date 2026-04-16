@@ -19,7 +19,7 @@ export interface DeletedHistoryResponse {
   providedIn: 'root'
 })
 export class HistoryService {
-  private apiUrl = 'http://127.0.0.1:8000/api/history';
+  private apiUrl = 'https://cashierapi-production-22b7.up.railway.app/api/history';
 
   constructor(private http: HttpClient) {}
 

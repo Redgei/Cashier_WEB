@@ -29,12 +29,6 @@ import { RouterLink } from '@angular/router';
             >
               Login
             </a>
-            <a
-              routerLink="/register"
-              class="rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
-            >
-              Register
-            </a>
           </div>
         </header>
 

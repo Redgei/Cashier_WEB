@@ -90,10 +90,9 @@ export interface RecordBillPaymentResponse {
   providedIn: 'root'
 })
 export class PaymentService {
-  private apiUrl = 'http://127.0.0.1:8000/api/payments';
-  private billsApiUrl = 'http://127.0.0.1:8000/api/bills';
-  private billingsApiUrl = 'http://127.0.0.1:8000/api/billings';
-  
+  private apiUrl = 'https://cashierapi-production-22b7.up.railway.app/api/payments';
+  private billsApiUrl = 'https://cashierapi-production-22b7.up.railway.app/api/bills';
+  private billingsApiUrl = 'https://cashierapi-production-22b7.up.railway.app/api/billings';
 
   constructor(private http: HttpClient) {}
 

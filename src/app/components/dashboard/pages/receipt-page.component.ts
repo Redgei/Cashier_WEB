@@ -7,6 +7,7 @@ import {
   ReceiptRecord,
   ReceiptService
 } from '../../../services/receipt.service';
+import { BillingRecord, PaymentService } from '../../../services/payment.service';
 
 interface RecentPaymentContext {
   billing_id: string;
@@ -216,7 +217,10 @@ export class ReceiptPageComponent implements OnInit {
   readonly generatedReceipts = signal<GeneratedReceiptRecord[]>([]);
   readonly recentPaymentContext = signal<RecentPaymentContext | null>(null);
 
-  constructor(private receiptService: ReceiptService) {}
+  constructor(
+    private receiptService: ReceiptService,
+    private paymentService: PaymentService
+  ) {}
 
   ngOnInit() {
     this.loadRecentPaymentContext();
@@ -418,7 +422,17 @@ export class ReceiptPageComponent implements OnInit {
         this.viewingReceiptNumber.set(null);
       },
       error: async (error) => {
-        this.receiptListError.set(await this.getErrorMessage(error));
+        const errorMessage = await this.getErrorMessage(error);
+        const fallbackReceipt = this.buildFallbackReceipt(generatedReceipt);
+
+        if (fallbackReceipt && this.isPaymentIncompleteError(errorMessage)) {
+          this.receiptListError.set(null);
+          this.receipt.set(fallbackReceipt);
+          this.hydrateFallbackReceiptFromBilling(generatedReceipt);
+        } else {
+          this.receiptListError.set(errorMessage);
+        }
+
         this.viewingReceiptNumber.set(null);
       }
     });
@@ -496,6 +510,121 @@ export class ReceiptPageComponent implements OnInit {
       balance: Number(response.balance ?? 0),
       date: response.date,
     };
+  }
+
+  private buildFallbackReceipt(generatedReceipt: GeneratedReceiptRecord): ReceiptRecord | null {
+    const receiptNumber = generatedReceipt.receipt_number?.trim();
+    const billingId = generatedReceipt.billing_id?.trim();
+
+    if (!receiptNumber || !billingId) {
+      return null;
+    }
+
+    const recentContext = this.recentPaymentContext();
+    const contextMatchesBilling = recentContext?.billing_id === billingId;
+    const generatedStatus = generatedReceipt.status?.trim() || '';
+    const contextStatus = contextMatchesBilling ? recentContext?.status?.trim() || '' : '';
+    const normalizedStatus = (generatedStatus || contextStatus).toLowerCase();
+    const isPartialOrUnpaid = normalizedStatus === 'unpaid' || normalizedStatus === 'partial';
+    const generatedAmount = this.toFiniteNumber(generatedReceipt.total_amount, 0);
+    const generatedBalance = this.toFiniteNumber(generatedReceipt.balance, 0);
+    const contextAmount = this.toFiniteNumber(contextMatchesBilling ? recentContext?.total_amount : null, 0);
+    const contextBalance = this.toFiniteNumber(contextMatchesBilling ? recentContext?.balance : null, 0);
+    const useContextAmount = contextMatchesBilling && isPartialOrUnpaid && generatedAmount <= 0 && contextAmount > 0;
+    const useContextBalance = contextMatchesBilling && isPartialOrUnpaid && generatedBalance <= 0 && contextBalance > 0;
+    const totalAmount = useContextAmount ? contextAmount : generatedAmount;
+    const balance = useContextBalance ? contextBalance : generatedBalance;
+    const contextTotalFee = this.toFiniteNumber(contextMatchesBilling ? recentContext?.total_fee : null, 0);
+    const totalFeeCandidate = totalAmount + Math.max(0, balance);
+    const totalFee = contextTotalFee > 0 ? contextTotalFee : totalFeeCandidate;
+    const fallbackStatus = balance > 0 ? 'Unpaid' : 'Paid';
+    const status = generatedStatus || contextStatus || fallbackStatus;
+
+    return {
+      receipt_number: receiptNumber,
+      billing_id: billingId,
+      student_id: generatedReceipt.student_id || (contextMatchesBilling ? recentContext?.student_id || '' : ''),
+      student_name: generatedReceipt.student_name || (contextMatchesBilling ? recentContext?.student_name || '' : ''),
+      fee_name: generatedReceipt.fee_name || (contextMatchesBilling ? recentContext?.fee_name || '' : ''),
+      total_fee: totalFee,
+      total_amount: totalAmount,
+      payment_method: generatedReceipt.payment_method || (contextMatchesBilling ? recentContext?.payment_method || 'Cash' : 'Cash'),
+      status,
+      balance,
+      date: generatedReceipt.issued_at || (contextMatchesBilling ? recentContext?.created_at || '' : '')
+    };
+  }
+
+  private hydrateFallbackReceiptFromBilling(generatedReceipt: GeneratedReceiptRecord) {
+    const billingId = generatedReceipt.billing_id?.trim();
+    const receiptNumber = generatedReceipt.receipt_number?.trim();
+
+    if (!billingId || !receiptNumber) {
+      return;
+    }
+
+    this.paymentService.getBillingById(billingId).subscribe({
+      next: (response) => {
+        const billing = response?.billing;
+
+        if (!billing) {
+          return;
+        }
+
+        if (this.receipt()?.receipt_number !== receiptNumber) {
+          return;
+        }
+
+        this.receipt.set(this.mapBillingToReceipt(generatedReceipt, billing));
+      },
+      error: () => {
+        // Keep fallback details visible even when billing lookup is unavailable.
+      }
+    });
+  }
+
+  private mapBillingToReceipt(generatedReceipt: GeneratedReceiptRecord, billing: BillingRecord): ReceiptRecord {
+    const receiptNumber = generatedReceipt.receipt_number?.trim() || this.receipt()?.receipt_number || '';
+    const billingId = String(billing.billing_id ?? generatedReceipt.billing_id ?? '').trim();
+    const totalFee = this.toFiniteNumber(billing.total_fee, this.receipt()?.total_fee ?? 0);
+    const totalAmount = this.toFiniteNumber(billing.total_amount, this.receipt()?.total_amount ?? 0);
+    const rawBalance = billing.balance;
+    const fallbackBalance = Math.max(0, totalFee - totalAmount);
+    const balance = this.toFiniteNumber(rawBalance, fallbackBalance);
+    const fallbackStatus = balance > 0 ? 'Unpaid' : 'Paid';
+    const status = String(billing.status ?? generatedReceipt.status ?? this.receipt()?.status ?? fallbackStatus);
+    const fallbackDate = generatedReceipt.issued_at || this.receipt()?.date || '';
+    const date = String(billing.updated_at ?? billing.created_at ?? fallbackDate);
+
+    return {
+      receipt_number: receiptNumber,
+      billing_id: billingId,
+      student_id: String(billing.student_id ?? generatedReceipt.student_id ?? this.receipt()?.student_id ?? ''),
+      student_name: String(billing.student_name ?? generatedReceipt.student_name ?? this.receipt()?.student_name ?? ''),
+      fee_name: String(billing.fee_name ?? generatedReceipt.fee_name ?? this.receipt()?.fee_name ?? ''),
+      total_fee: totalFee,
+      total_amount: totalAmount,
+      payment_method: String(billing.payment_method ?? generatedReceipt.payment_method ?? this.receipt()?.payment_method ?? 'Cash'),
+      status,
+      balance,
+      date
+    };
+  }
+
+  private toFiniteNumber(value: number | null | undefined, fallback: number | null | undefined): number {
+    const normalizedValue = Number(value);
+
+    if (Number.isFinite(normalizedValue)) {
+      return normalizedValue;
+    }
+
+    const normalizedFallback = Number(fallback);
+    return Number.isFinite(normalizedFallback) ? normalizedFallback : 0;
+  }
+
+  private isPaymentIncompleteError(message: string): boolean {
+    const normalized = message.trim().toLowerCase();
+    return normalized.includes('payment not complete') || normalized.includes('receipt not available');
   }
 
   private getStandardErrorMessage(error: any, fallback: string): string {

@@ -103,12 +103,7 @@ import { AuthService } from '../../services/auth.service';
               </button>
             </form>
 
-            <div class="mt-8 rounded-3xl bg-slate-100 p-5">
-              <p class="text-sm text-slate-600">
-                No cashier account yet?
-                <a routerLink="/register" class="font-semibold text-sky-700 hover:text-sky-600">Create one here</a>
-              </p>
-            </div>
+           
           </div>
         </div>
       </div>

@@ -57,7 +57,7 @@ export interface TransactionHistoryResponse {
   providedIn: 'root'
 })
 export class TransactionHistoryService {
-  private apiUrl = 'http://127.0.0.1:8000/api/history';
+  private apiUrl = 'https://cashierapi-production-22b7.up.railway.app/api/history';
   private readonly localStorageKey = 'cashierweb.transaction-history.records';
   private localTransactionSequence = 0;
 
