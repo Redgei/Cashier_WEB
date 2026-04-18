@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface RefundPaymentRecord {
@@ -60,18 +60,52 @@ export class RefundService {
   refundPayment(identifier: string): Observable<RefundResponse> {
     return this.http.post<RefundResponse>(
       `${this.apiUrl}/payments/${encodeURIComponent(identifier)}/refund`,
-      {}
+      {},
+      {
+        headers: this.getAuthHeaders()
+      }
     );
   }
 
   getAllRefunds(): Observable<ProcessedRefundsResponse> {
-    return this.http.get<ProcessedRefundsResponse>(`${this.apiUrl}/refunds`);
+    return this.http.get<ProcessedRefundsResponse>(`${this.apiUrl}/refunds`, {
+      headers: this.getAuthHeaders()
+    });
   }
 
   deleteRefund(billingId: string): Observable<DeleteRefundResponse> {
     return this.http.delete<DeleteRefundResponse>(
       `${this.apiUrl}/refunds/${encodeURIComponent(billingId)}`,
-      {}
+      {
+        headers: this.getAuthHeaders()
+      }
     );
+  }
+
+  private getAuthHeaders(): HttpHeaders {
+    const token = this.getStoredToken();
+
+    if (!token) {
+      return new HttpHeaders();
+    }
+
+    return new HttpHeaders({
+      Authorization: `Bearer ${token}`
+    });
+  }
+
+  private getStoredToken(): string | null {
+    if (typeof localStorage === 'undefined') {
+      return null;
+    }
+
+    const rawToken = localStorage.getItem('token')?.trim();
+
+    if (!rawToken) {
+      return null;
+    }
+
+    const normalizedToken = rawToken.replace(/^bearer\s+/i, '').trim();
+    return normalizedToken || null;
   }
 }

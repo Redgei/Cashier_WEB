@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpResponse } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 
@@ -66,24 +66,33 @@ export class ReceiptService {
 
   generateReceiptByBillingId(billingId: string): Observable<HttpResponse<Blob>> {
     return this.http.get(`${this.apiUrl}/billing/${encodeURIComponent(billingId)}/receipt`, {
+      headers: this.getAuthHeaders(),
       observe: 'response',
       responseType: 'blob'
     });
   }
 
   getAllReceipts(): Observable<GeneratedReceiptsResponse> {
-    return this.http.get<GeneratedReceiptsResponse>(`${this.apiUrl}/receipts`);
+    return this.http.get<GeneratedReceiptsResponse>(`${this.apiUrl}/receipts`, {
+      headers: this.getAuthHeaders()
+    });
   }
 
   deleteReceipt(receiptNumber: string): Observable<DeleteReceiptResponse> {
     return this.http.delete<DeleteReceiptResponse>(
-      `${this.apiUrl}/receipts/${encodeURIComponent(receiptNumber)}`
+      `${this.apiUrl}/receipts/${encodeURIComponent(receiptNumber)}`,
+      {
+        headers: this.getAuthHeaders()
+      }
     );
   }
 
   getReceiptByNumber(receiptNumber: string): Observable<ReceiptLookupResponse> {
     return this.http.get<ReceiptLookupResponse>(
-      `${this.apiUrl}/receipts/${encodeURIComponent(receiptNumber)}`
+      `${this.apiUrl}/receipts/${encodeURIComponent(receiptNumber)}`,
+      {
+        headers: this.getAuthHeaders()
+      }
     );
   }
 
@@ -518,5 +527,32 @@ export class ReceiptService {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  private getAuthHeaders(): HttpHeaders {
+    const token = this.getStoredToken();
+
+    if (!token) {
+      return new HttpHeaders();
+    }
+
+    return new HttpHeaders({
+      Authorization: `Bearer ${token}`
+    });
+  }
+
+  private getStoredToken(): string | null {
+    if (typeof localStorage === 'undefined') {
+      return null;
+    }
+
+    const rawToken = localStorage.getItem('token')?.trim();
+
+    if (!rawToken) {
+      return null;
+    }
+
+    const normalizedToken = rawToken.replace(/^bearer\s+/i, '').trim();
+    return normalizedToken || null;
   }
 }

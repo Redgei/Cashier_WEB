@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface PaymentRecord {
@@ -97,25 +97,36 @@ export class PaymentService {
   constructor(private http: HttpClient) {}
 
   getPayments(): Observable<PaymentRecord[]> {
-    return this.http.get<PaymentRecord[]>(this.apiUrl);
+    return this.http.get<PaymentRecord[]>(this.apiUrl, {
+      headers: this.getAuthHeaders()
+    });
   }
 
   createPayment(payload: CreatePaymentPayload): Observable<CreatePaymentResponse> {
-    return this.http.post<CreatePaymentResponse>(this.apiUrl, payload);
+    return this.http.post<CreatePaymentResponse>(this.apiUrl, payload, {
+      headers: this.getAuthHeaders()
+    });
   }
 
   createBill(payload: CreatePaymentPayload): Observable<CreatePaymentResponse> {
-    return this.http.post<CreatePaymentResponse>(this.billsApiUrl, payload);
+    return this.http.post<CreatePaymentResponse>(this.billsApiUrl, payload, {
+      headers: this.getAuthHeaders()
+    });
   }
 
   getBillings(): Observable<BillingRecord[]> {
-    return this.http.get<BillingRecord[]>(this.billingsApiUrl);
+    return this.http.get<BillingRecord[]>(this.billingsApiUrl, {
+      headers: this.getAuthHeaders()
+    });
   }
 
   payBilling(billingId: string, amount: number): Observable<RecordBillPaymentResponse> {
     return this.http.post<RecordBillPaymentResponse>(
       `${this.billingsApiUrl}/${encodeURIComponent(billingId)}/pay`,
-      { amount }
+      { amount },
+      {
+        headers: this.getAuthHeaders()
+      }
     );
   }
 
@@ -126,37 +137,82 @@ export class PaymentService {
   updateStudentBill(studentId: string, billingId: string, payload: UpdateStudentBillPayload): Observable<PaymentMutationResponse> {
     return this.http.put<PaymentMutationResponse>(
       `${this.apiUrl}/student/${encodeURIComponent(studentId)}/billing/${encodeURIComponent(billingId)}`,
-      payload
+      payload,
+      {
+        headers: this.getAuthHeaders()
+      }
     );
   }
 
   archivePayment(studentId: string, billingId: string): Observable<PaymentMutationResponse> {
     return this.http.delete<PaymentMutationResponse>(
-      `${this.apiUrl}/student/${encodeURIComponent(studentId)}/billing/${encodeURIComponent(billingId)}`
+      `${this.apiUrl}/student/${encodeURIComponent(studentId)}/billing/${encodeURIComponent(billingId)}`,
+      {
+        headers: this.getAuthHeaders()
+      }
     );
   }
 
   getBillsByStudent(studentId: string): Observable<StudentPaymentsResponse> {
     return this.http.get<StudentPaymentsResponse>(
-      `${this.apiUrl}/student/${encodeURIComponent(studentId)}`
+      `${this.apiUrl}/student/${encodeURIComponent(studentId)}`,
+      {
+        headers: this.getAuthHeaders()
+      }
     );
   }
 
   getPaidBillsByStudent(studentId: string): Observable<StudentPaymentsResponse> {
     return this.http.get<StudentPaymentsResponse>(
-      `${this.apiUrl}/student/${encodeURIComponent(studentId)}/paid`
+      `${this.apiUrl}/student/${encodeURIComponent(studentId)}/paid`,
+      {
+        headers: this.getAuthHeaders()
+      }
     );
   }
 
   getUnpaidBillsByStudent(studentId: string): Observable<StudentPaymentsResponse> {
     return this.http.get<StudentPaymentsResponse>(
-      `${this.apiUrl}/student/${encodeURIComponent(studentId)}/unpaid`
+      `${this.apiUrl}/student/${encodeURIComponent(studentId)}/unpaid`,
+      {
+        headers: this.getAuthHeaders()
+      }
     );
   }
 
   getBillingById(billingId: string): Observable<BillingLookupResponse> {
     return this.http.get<BillingLookupResponse>(
-      `http://127.0.0.1:8000/api/billings/${encodeURIComponent(billingId)}`
+      `http://127.0.0.1:8000/api/billings/${encodeURIComponent(billingId)}`,
+      {
+        headers: this.getAuthHeaders()
+      }
     );
+  }
+
+  private getAuthHeaders(): HttpHeaders {
+    const token = this.getStoredToken();
+
+    if (!token) {
+      return new HttpHeaders();
+    }
+
+    return new HttpHeaders({
+      Authorization: `Bearer ${token}`
+    });
+  }
+
+  private getStoredToken(): string | null {
+    if (typeof localStorage === 'undefined') {
+      return null;
+    }
+
+    const rawToken = localStorage.getItem('token')?.trim();
+
+    if (!rawToken) {
+      return null;
+    }
+
+    const normalizedToken = rawToken.replace(/^bearer\s+/i, '').trim();
+    return normalizedToken || null;
   }
 }
